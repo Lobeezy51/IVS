@@ -2,6 +2,7 @@ import sqlite3
 import datetime
 import os
 import streamlit as st
+import docx
 from docx import Document
 
 # Define the path to your SQLite database file
