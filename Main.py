@@ -2,19 +2,14 @@ import sqlite3
 import datetime
 import os
 import streamlit as st
-import docx
 from docx import Document
+import base64
+import uuid
 
 # Define the path to your SQLite database file
-db_path = r'C:\sqlite3\BoresightLog_240226.db'
+db_path = rf'C:\sqlite3\BoresightLog_240226.db'
 
-def change_mode():
-    if st.checkbox("Dark Mode"):
-        st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
-    else:
-        st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
-
-
+# Define the function to execute the query and print the results
 def execute_and_print_all(parent_serial_numbers, db_path):
     all_serial_dict = {}  # Initialize the dictionary
     part_numbers = {
@@ -64,8 +59,8 @@ def execute_and_print_all(parent_serial_numbers, db_path):
                 serial_dict[updated_serial_number_0] = row[1]
                 serial_dict[updated_serial_number_1] = row[1]
 
-        for key, value in serial_dict.items():
-            st.write(f"'{key}': {value}")
+        #for key, value in serial_dict.items():
+            #st.write(f"'{key}': {value}")
 
         return serial_dict  # Return the serial_dict
 
@@ -89,23 +84,28 @@ def update_document():
     serial_dict = execute_and_print_all(parent_serial_numbers, db_path)
 
     # Validate P-Number
-    if not p_number_entry.isnumeric():
+    if not p_number_entry.isdigit():
         st.error("Invalid P-Number. Please enter a numeric value.")
         return
 
     # Validate Fiber Bundle
-    if not fiber_bundle_entry.isnumeric():
+    if not fiber_bundle_entry.isdigit():
         st.error("Invalid Fiber Bundle. Please enter a numeric value.")
         return
 
     # Validate HO SN
-    if not optical_box_ho_value.isnumeric():
+    if not optical_box_ho_value.isdigit():
         st.error("Invalid HO SN. Please enter a numeric value.")
         return
 
     # Validate ZO SN
-    if not optical_box_zo_value.isnumeric():
+    if not optical_box_zo_value.isdigit():
         st.error("Invalid ZO SN. Please enter a numeric value.")
+        return
+    
+    # Validate Technician's Pin
+    if not technician_pin_entry.isdigit():
+        st.error("Invalid Technician's Pin. Please enter a numeric value.")
         return
 
     # Specify the paths for the original and updated documents
@@ -116,13 +116,13 @@ def update_document():
     doc = Document(document_path)
 
     replacement_dict = {
-        '[USERINTIALS]': user_intials_entry,
+        '[USERINTIALS]': technician_pin_entry,
         '[PNUMBER]': p_number_entry,
         '[FIBERBUNDLE]': fiber_bundle_entry,
         '[HOSN]': optical_box_ho_value,
         '[ZOSN]': optical_box_zo_value,
-        '[INPUTFIBERHO]': input_fiber_ho_entry,
-        '[INPUTFIBERZO]': input_fiber_zo_entry,
+        '[INPUTFIBERHO]': 'input_fiber_ho_entry',
+        '[INPUTFIBERZO]': 'input_fiber_zo_entry',
         '[TODAY]': datetime.datetime.today().strftime("%Y%m%d_%H%M"),
     }
 
@@ -146,27 +146,51 @@ def update_document():
 
     doc.save(updated_document_name)
 
+    # Check if the document exists and is non-empty
+    if os.path.exists(updated_document_name) and os.path.getsize(updated_document_name) > 0:
+        return updated_document_name
+    else:
+        st.error("Error: Updated document not found or empty.")
+        return None
+
 # Interface
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
 st.title('Integration Data Entry Form')
-change_mode()
 
 # User Information Frame
-st.sidebar.subheader("User Information")
-user_intials_entry = st.sidebar.text_input("Technician's Pin")
+st.subheader("User Information")
+user_container = st.container(border=True)
+technician_pin_entry = user_container.text_input("Technician's Pin")
 
 # Unit Information Frame
-st.sidebar.subheader("Unit Information")
-p_number_entry = st.sidebar.text_input("P-Number")
-fiber_bundle_entry = st.sidebar.text_input("Fiber Bundle")
-optical_box_ho_entry = st.sidebar.text_input("HO SN")
-optical_box_zo_entry = st.sidebar.text_input("ZO SN")
-input_fiber_ho_entry = st.sidebar.text_input("Input Fiber HO")
-input_fiber_zo_entry = st.sidebar.text_input("Input Fiber ZO")
+st.subheader("Unit Information")
+unit_container = st.container(border=True)
+col1, col2 = unit_container.columns(2)
+p_number_entry = col1.text_input("P-Number")
+fiber_bundle_entry = col1.text_input("Fiber Bundle")
+optical_box_ho_entry = col2.text_input("HO SN")
+optical_box_zo_entry = col2.text_input("ZO SN")
 
 # Update Document Button
 if st.button("Update Document"):
-    update_document()
-    st.success("Document Updated Successfully!")
-
+    updated_document_path = update_document()
+    if updated_document_path:
+        st.success("Document Updated Successfully!")
+        
+        # Display the updated Word document
+        with open(updated_document_path, "rb") as file:
+            doc_bytes = file.read()
+            b64 = base64.b64encode(doc_bytes).decode()
+            button_label = "Download Updated Document"
+            button_uuid = str(uuid.uuid4())  # Generate a random UUID
+            custom_css = f"""<style>
+                            #{button_uuid} {{
+                                width: auto;
+                                display: inline-block;
+                                text-align: center;
+                            }}
+                            </style>"""
+            st.markdown(custom_css, unsafe_allow_html=True)
+            href = f'<a href="data:application/octet-stream;base64,{b64}" download="verifyModule_P{p_number_entry}.docx"><button id="{button_uuid}">{button_label}</button></a>'
+            st.markdown(href, unsafe_allow_html=True)
